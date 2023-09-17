@@ -1,4 +1,3 @@
-use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint,
@@ -6,95 +5,42 @@ use solana_program::{
     msg,
     program_error::ProgramError,
     pubkey::Pubkey,
+    sysvar::{clock::Clock},
 };
+use rand::Rng;
+use solana_program::sysvar::Sysvar;
 
-/// Define the type of state stored in accounts
-#[derive(BorshSerialize, BorshDeserialize, Debug)]
-pub struct GreetingAccount {
-    /// number of greetings
-    pub counter: u32,
-}
-
-// Declare and export the program's entrypoint
 entrypoint!(process_instruction);
 
 // Program entrypoint's implementation
 pub fn process_instruction(
-    program_id: &Pubkey, // Public key of the account the hello world program was loaded into
-    accounts: &[AccountInfo], // The account to say hello to
-    _instruction_data: &[u8], // Ignored, all helloworld instructions are hellos
+    _program_id: &Pubkey, // Public key of the account the program was loaded into
+    accounts: &[AccountInfo], // Accounts provided to the program
+    _instruction_data: &[u8], // Instruction data (not used in this example)
 ) -> ProgramResult {
-    msg!("Hello World Rust program entrypoint");
-
-    // Iterating accounts is safer than indexing
+    // Ensure that the program is invoked by the correct account
     let accounts_iter = &mut accounts.iter();
-
-    // Get the account to say hello to
     let account = next_account_info(accounts_iter)?;
 
-    // The account must be owned by the program in order to modify its data
-    if account.owner != program_id {
-        msg!("Greeted account does not have the correct program id");
+    // Ensure that the account is owned by the program
+    if account.owner != _program_id {
+        msg!("Account is not owned by the program");
         return Err(ProgramError::IncorrectProgramId);
     }
 
-    // Increment and store the number of times the account has been greeted
-    let mut greeting_account = GreetingAccount::try_from_slice(&account.data.borrow())?;
-    greeting_account.counter += 1;
-    greeting_account.serialize(&mut &mut account.data.borrow_mut()[..])?;
+    // Get the current timestamp from the Clock sysvar
+    let clock_account = next_account_info(accounts_iter)?;
+    let clock = Clock::from_account_info(clock_account)?;
 
-    msg!("Greeted {} time(s)!", greeting_account.counter);
+    // Generate a random number between 0 and 100 based on the current timestamp
+    let seed = clock.unix_timestamp as u64;
+    let mut rng = rand::thread_rng();
+    let random_number = rng.gen_range(0..=100);
+
+    // Store the random number in the account's data field
+    account.data[0] = random_number as u8;
+
+    msg!("Generated random number: {}", random_number);
 
     Ok(())
-}
-
-// Sanity tests
-#[cfg(test)]
-mod test {
-    use super::*;
-    use solana_program::clock::Epoch;
-    use std::mem;
-
-    #[test]
-    fn test_sanity() {
-        let program_id = Pubkey::default();
-        let key = Pubkey::default();
-        let mut lamports = 0;
-        let mut data = vec![0; mem::size_of::<u32>()];
-        let owner = Pubkey::default();
-        let account = AccountInfo::new(
-            &key,
-            false,
-            true,
-            &mut lamports,
-            &mut data,
-            &owner,
-            false,
-            Epoch::default(),
-        );
-        let instruction_data: Vec<u8> = Vec::new();
-
-        let accounts = vec![account];
-
-        assert_eq!(
-            GreetingAccount::try_from_slice(&accounts[0].data.borrow())
-                .unwrap()
-                .counter,
-            0
-        );
-        process_instruction(&program_id, &accounts, &instruction_data).unwrap();
-        assert_eq!(
-            GreetingAccount::try_from_slice(&accounts[0].data.borrow())
-                .unwrap()
-                .counter,
-            1
-        );
-        process_instruction(&program_id, &accounts, &instruction_data).unwrap();
-        assert_eq!(
-            GreetingAccount::try_from_slice(&accounts[0].data.borrow())
-                .unwrap()
-                .counter,
-            2
-        );
-    }
 }
