@@ -8,6 +8,8 @@ use solana_program::{
     sysvar::{clock::Clock},
 };
 use rand::Rng;
+use std::cell::RefCell;
+use std::rc::Rc;
 use solana_program::sysvar::Sysvar;
 
 entrypoint!(process_instruction);
@@ -37,8 +39,14 @@ pub fn process_instruction(
     let mut rng = rand::thread_rng();
     let random_number = rng.gen_range(0..=100);
 
+    // Get a mutable reference to the account data
+    let mut account_data = Rc::get_mut(&mut account.data.borrow_mut()).ok_or_else(|| {
+        msg!("Failed to get mutable reference to account data");
+        ProgramError::InvalidAccountData
+    })?;
+
     // Store the random number in the account's data field
-    account.data[0] = random_number as u8;
+    account_data[0] = random_number as u8;
 
     msg!("Generated random number: {}", random_number);
 
